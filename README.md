@@ -155,7 +155,8 @@
 ### Step 1：批量创建项目（CreateProjects.js）
 
 1. **登录** [Google Cloud Console](https://console.cloud.google.com/) 并完成 2FA（如有）。  
-2. **打开浏览器控制台**：`F12` -> 切换到 `Console`。  
+2. **打开浏览器控制台**：`F12` -> 切换到 `Console`，并**建议勾选 “Preserve log / 保留日志”**。 ![image](https://github.com/user-attachments/assets/212bb645-f8a3-40b1-9067-10f25447854b)
+
 3. **复制脚本**  
    - 在本仓库找到 [`CreateProjects.js`](./CreateProjects.js) 脚本文件，打开源代码，**复制全部**。  
 4. **粘贴并回车**  
