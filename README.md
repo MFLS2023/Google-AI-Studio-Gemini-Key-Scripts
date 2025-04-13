@@ -25,7 +25,7 @@
    - [Step 3：可选，一次性获取已存在 Key（FetchAllExistingKeys.js）](#step-3可选一次性获取已存在-keyfetchallexistingkeysjs)  
 6. [仓库结构](#仓库结构)  
 7. [常见问题 (FAQ)](#常见问题-faq)  
-//8. [许可证 (License)](#许可证-license)
+
 
 ---
 
