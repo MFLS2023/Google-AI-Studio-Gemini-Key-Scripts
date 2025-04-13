@@ -24,13 +24,14 @@
  * 4. 将复制的代码粘贴到控制台中。
  * 5. 按 Enter (回车键) 执行脚本。
  * 6. 密切观察控制台输出，了解脚本执行进度、结果或任何错误信息。
+ * 7. 如果想要修改创建的项目的数量，只需修改 `TARGET_PROJECT_CREATIONS` 变量即可，这里默认为5
  *
  * ======================================================
  */
 (async function runAiStudioProjectCreatorConsoleSilentColorOpt() {
 
     // --- 配置 ---
-    const TARGET_PROJECT_CREATIONS = 10;
+    const TARGET_PROJECT_CREATIONS = 5;
     const DELAY_BETWEEN_ATTEMPTS = 5000;
     const DELAY_AFTER_ERROR_REFRESH = 3000;
     const MAX_AUTO_REFRESH_ON_ERROR = 5;
