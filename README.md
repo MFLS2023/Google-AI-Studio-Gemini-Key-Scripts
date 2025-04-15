@@ -130,7 +130,8 @@
 #### 使用步骤
 
 1. **安装 Tampermonkey**  
-   - 在浏览器插件商店搜索并安装 “Tampermonkey”（或其他用户脚本管理器）。  
+   - 在浏览器插件商店搜索并安装 “Tampermonkey”（或其他用户脚本管理器）。
+   - 懒得搜索，也可以点[这里](https://www.tampermonkey.net/)直达 
 
 2. **导入油猴脚本**  
    - 将本仓库中的 `Google_AI_Studio_Gemini_Automation_Suite.user.js` 文件保存后，添加到 Tampermonkey。  
