@@ -1,21 +1,34 @@
 // ==UserScript==
-// @name         Google_AI_Studio_Gemini_Automation_Suite.user.js
+// @name         AI Studio 多功能脚本合集（更新版）
 // @namespace    http://tampermonkey.net/
 // @version      1.4.3
-// @description  此脚本整合了三个主要功能：在 console.cloud.google.com 页面自动创建项目、在 aistudio.google.com 页面自动生成 API KEY 和提取 API KEY。脚本自动检测当前域，不在目标页面时自动跳转；项目创建流程结束后自动设置标记，跳转到 aistudio 页面自动执行 API KEY 生成流程。悬浮按钮会自动插入，无需手动刷新。
-// 
-// 【用户可自定义参数】  
-// CONFIG 对象中提供了以下参数：  
-//  - PROJECT_CREATION_COUNT：项目创建的总数（默认 5）；  
-//  - API_KEYS_PER_PROJECT：每个项目需要生成的 API KEY 数量（默认 1）；  
-//  - PROJECT_CREATION_DELAY：项目创建尝试之间的间隔时间（默认 5000 毫秒）；  
-//  - API_KEY_CREATION_DELAY：API KEY 创建尝试之间的间隔时间（默认 2500 毫秒）；  
-//  - SELECT_CHANGE_DELAY：在下拉框选项点击后，额外等待时间以确保 change 事件生效（默认 1000 毫秒）；
-//  其它等待延时（例如页面加载等待时间）均可根据实际情况进行调整。
-// 
-// 【敏感变量】  
-//  脚本主要使用 GM_setValue/GM_getValue 来跨域存储标记，不在代码中硬编码任何敏感数据；生成的 API KEY 会在控制台输出，请注意保护日志安全。
-// 
+// @description  此脚本整合了三个主要功能：
+//               1. 项目创建流程：在 console.cloud.google.com 页面自动创建目标数（默认5个）的项目；
+//               2. API KEY 自动生成流程：在项目创建完成后，自动跳转到 aistudio.google.com/apikey 页面生成 API KEY；
+//               3. API KEY 提取流程：在 aistudio 页面上提取现有 API KEY。
+//               脚本会自动监测当前页面所属域，如果用户点击创建功能而不在目标页面，则自动跳转到 console.cloud.google.com；
+//               同理，点击提取功能时如果不在 aistudio.google.com 页面，则自动跳转到目标页面。
+//               此外，脚本利用 MutationObserver、定时器、路由变化监听和 window 的 load/DOMContentLoaded 事件，确保悬浮按钮能自动插入，无需手动刷新。
+//
+// 【重要说明】
+// 1. 本脚本仅为内部自动化操作脚本，部分错误提示（例如来自Google Tag Manager的）是由第三方脚本引起，与本脚本功能无关。
+// 2. 请确保目标网站的页面结构未发生变化，否则部分 CSS 选择器可能需要调整。
+// 3. 如果你的项目中存在敏感信息（例如 API KEY），请注意脚本输出的密钥内容可能会在控制台中显示，请妥善保管日志信息。
+// 4. 以下部分参数用户可以根据需要自定义调整：
+//    - TARGET_PROJECT_CREATIONS：项目创建的目标数量，默认值为 5。
+//    - DELAY_BETWEEN_ATTEMPTS：每次项目创建之间的等待时间，默认 5000 毫秒（即 5 秒）。
+//    - MAX_AUTO_REFRESH_ON_ERROR：自动刷新重试的最大次数，默认值为 5。
+//    - 下拉框选项触发 change 事件后的等待时间，在 runApiKeyCreation 中由延时 1000 毫秒来确保选项生效。
+//    - 各等待延时（例如等待 1500 毫秒、2000 毫秒等），可根据页面加载速度进行调整。
+//
+// 【敏感变量】
+// 本脚本中敏感变量主要有：
+//    - API KEY：由 Google Cloud 自动生成，脚本只是提取和输出，不建议在代码中硬编码修改。
+//    - GM_setValue / GM_getValue 用于跨域存储标记，确保创建流程和 API KEY 生成流程能够串联操作。
+//
+// 【运行范围】
+// 该脚本在所有 console.cloud.google.com 与 aistudio.google.com 的子域下均生效（@match 改为 *://*.console.cloud.google.com/* 与 *://*.aistudio.google.com/*）。
+//
 // @author       YourName
 // @match        *://*.console.cloud.google.com/*
 // @match        *://*.aistudio.google.com/*
@@ -24,25 +37,16 @@
 // @run-at       document-idle
 // ==/UserScript==
 
-/************************************
- * 用户自定义参数，请根据实际需要修改
- ************************************/
-const CONFIG = {
-  PROJECT_CREATION_COUNT: 5,    // 需要自动创建的项目总数
-  API_KEYS_PER_PROJECT: 1,      // 每个项目需要生成的 API KEY 数量
-  PROJECT_CREATION_DELAY: 5000, // 每次项目创建尝试间的延时（毫秒）
-  API_KEY_CREATION_DELAY: 2500, // 每次 API KEY 创建尝试间的延时（毫秒）
-  SELECT_CHANGE_DELAY: 1000     // 下拉框选项点击后额外等待的时间（毫秒）
-};
-
 (function () {
     'use strict';
 
     /*******************************
      * 公共工具函数
      *******************************/
+    // 延时函数，返回一个延时 promise
     const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+    // 等待指定选择器的元素出现并符合可见性条件，支持检查禁用状态
     async function waitForElement(selector, timeout = 15000, root = document, checkDisabled = true) {
         const start = Date.now();
         while (Date.now() - start < timeout) {
@@ -70,6 +74,7 @@ const CONFIG = {
         throw new Error(`等待元素 "${selector}" 超时 (${timeout}ms)`);
     }
 
+    // 等待返回满足数量要求的多个元素
     async function waitForElements(selector, minCount = 1, timeout = 20000, root = document) {
         const start = Date.now();
         while (Date.now() - start < timeout) {
@@ -89,13 +94,15 @@ const CONFIG = {
      * 1. 项目创建流程（原 CreateProjects.js）
      *******************************/
     async function runProjectCreation() {
-        // 自动确保当前处于 console.cloud.google.com 页面
+        // 若当前页面不在 console.cloud.google.com 域，则自动跳转过去
         if (!location.host.includes("console.cloud.google.com")) {
+            // 自动跳转，无需提示用户点击确认
             window.location.href = "https://console.cloud.google.com";
             return;
         }
-        const TARGET_PROJECT_CREATIONS = CONFIG.PROJECT_CREATION_COUNT;
-        const DELAY_BETWEEN_ATTEMPTS = CONFIG.PROJECT_CREATION_DELAY;
+        // 用户可自定义参数：目标创建项目数（默认 5）、两次尝试间延时（默认5000ms）、最大自动刷新次数（默认5）
+        const TARGET_PROJECT_CREATIONS = 5;
+        const DELAY_BETWEEN_ATTEMPTS = 5000;
         const MAX_AUTO_REFRESH_ON_ERROR = 5;
         const REFRESH_COUNTER_KEY = 'aiStudioAutoRefreshCountSilentColorOpt';
 
@@ -104,6 +111,7 @@ const CONFIG = {
         let stoppedDueToErrorLimit = false;
         let refreshCount = parseInt(GM_getValue(REFRESH_COUNTER_KEY, '0'));
 
+        // 以下仅为 log 样式提示
         const STYLE_BOLD_BLACK = 'color: black; font-weight: bold;';
         const STYLE_BOLD_RED = 'color: red; font-weight: bold;';
         const STYLE_GREEN = 'color: green;';
@@ -117,6 +125,7 @@ const CONFIG = {
             return;
         }
 
+        // 检查是否触发项目数量限制
         async function checkLimitError() {
             try {
                 const increaseButton = document.querySelector('a#p6ntest-quota-submit-button');
@@ -139,6 +148,7 @@ const CONFIG = {
             }
         }
 
+        // 尝试关闭对话框，用户无需手动操作
         async function tryCloseDialog() {
             console.log("尝试关闭可能存在的对话框...");
             try {
@@ -178,6 +188,7 @@ const CONFIG = {
             }
         }
 
+        // 自动点击项目创建流程中的各个步骤
         async function autoClickSequence() {
             let step = '开始';
             try {
@@ -235,8 +246,8 @@ const CONFIG = {
             }
         }
 
-        console.log(`准备开始执行项目创建，目标 ${TARGET_PROJECT_CREATION_COUNT = TARGET_PROJECT_CREATION_COUNT || CONFIG.PROJECT_CREATION_COUNT} 次...`);
-        for (let i = 1; i <= TARGET_PROJECT_CREATION_COUNT; i++) {
+        console.log(`准备开始执行项目创建，目标 ${TARGET_PROJECT_CREATIONS} 次...`);
+        for (let i = 1; i <= TARGET_PROJECT_CREATIONS; i++) {
             console.log(`\n===== 开始第 ${i} 次尝试 =====`);
             let result = null;
             try {
@@ -249,7 +260,7 @@ const CONFIG = {
                 if (!result?.refreshed) {
                     successfulSubmissions++;
                     console.log(`第 ${i} 次尝试提交成功。`);
-                    if (i < TARGET_PROJECT_CREATION_COUNT) {
+                    if (i < TARGET_PROJECT_CREATIONS) {
                         console.log(`等待 ${DELAY_BETWEEN_ATTEMPTS / 1000} 秒后开始下一次...`);
                         await delay(DELAY_BETWEEN_ATTEMPTS);
                     }
@@ -270,7 +281,7 @@ const CONFIG = {
         } else if (stoppedDueToErrorLimit) {
             console.log(`因错误或刷新上限而停止。共成功提交 ${successfulSubmissions} 次请求。`);
         } else {
-            console.log(`完成计划的 ${TARGET_PROJECT_CREATION_COUNT} 次尝试，共成功提交 ${successfulSubmissions} 次请求。`);
+            console.log(`完成计划的 ${TARGET_PROJECT_CREATIONS} 次尝试，共成功提交 ${successfulSubmissions} 次请求。`);
             GM_setValue(REFRESH_COUNTER_KEY, '0');
         }
         console.log("--- 项目创建流程结束 ---");
@@ -281,9 +292,9 @@ const CONFIG = {
      *******************************/
     async function runApiKeyCreation() {
         console.log("--- 开始为每个项目创建 API 密钥 ---");
-        const keysPerProjectTarget = CONFIG.API_KEYS_PER_PROJECT;
+        const keysPerProjectTarget = 1;
         const apiKeyWaitTimeout = 25000;
-        const delayBetweenAttempts = CONFIG.API_KEY_CREATION_DELAY;
+        const delayBetweenAttempts = 2500;
         const delayBetweenProjects = 4000;
         const closeDialogTimeout = 5000;
         const mainCreateButtonSelector = "button.create-api-key-button";
@@ -448,9 +459,9 @@ const CONFIG = {
                     targetProjectOption.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                     await delay(300);
                     targetProjectOption.click();
-                    // 额外派发 change 事件，并延长等待时间至 1000ms，确保下拉框选中生效
+                    // 额外派发 change 事件，并延长等待时间（1000ms），确保下拉框选中生效
                     targetProjectOption.dispatchEvent(new Event('change', { bubbles: true }));
-                    await delay(CONFIG.SELECT_CHANGE_DELAY);
+                    await delay(1000);
                     console.log("等待项目选择生效...");
                     await delay(2500);
                     console.log("  [4/7] 点击对话框内最终创建按钮...");
@@ -789,13 +800,13 @@ const CONFIG = {
         container.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
 
         const btnCreateAndGet = document.createElement('button');
-        btnCreateAndGet.textContent = '创建项目并获取APIKEY';
+        btnCreateAndGet.textContent = '创建项目并获取API KEY';
         btnCreateAndGet.style.padding = '5px 10px';
         btnCreateAndGet.style.fontSize = '14px';
         btnCreateAndGet.style.cursor = 'pointer';
 
         const btnExtract = document.createElement('button');
-        btnExtract.textContent = '提取APIKEY';
+        btnExtract.textContent = '提取API KEY';
         btnExtract.style.padding = '5px 10px';
         btnExtract.style.fontSize = '14px';
         btnExtract.style.cursor = 'pointer';
@@ -805,7 +816,7 @@ const CONFIG = {
         document.body.appendChild(container);
 
         btnCreateAndGet.addEventListener('click', async () => {
-            // 自动跳转至 console 页面
+            // 自动跳转至 console 页面（无需提示）
             if (!location.host.includes("console.cloud.google.com")) {
                 window.location.href = "https://console.cloud.google.com";
                 return;
@@ -826,7 +837,7 @@ const CONFIG = {
         });
 
         btnExtract.addEventListener('click', async () => {
-            // 自动跳转至 aistudio 页面
+            // 自动跳转至 aistudio 页面（无需提示）
             if (!location.host.includes("aistudio.google.com")) {
                 window.location.href = "https://aistudio.google.com/apikey";
                 return;
