@@ -1,10 +1,4 @@
-你说得很对，通常热门仓库在默认 README 开头都会添加个快速跳转链接，方便阅读英文版。你可以在 README 顶部增加如下提示与链接，例如：
 
-```markdown
-**English Version:** [README.en.md](README.en.md)
-```
-
-接下来，我给你修改后的全中文版本 README 文件，在最前面添加了快速跳转链接部分。请参考下面完整内容，将其保存为默认的 `README.md` 文件：
 
 ---
 
@@ -216,4 +210,3 @@ google-ai-gemini-key-scripts/
 
 ---
 
-请确认上述内容是否符合你的要求，如果需要进一步调整或提供英文版 README 文档，请告诉我！
