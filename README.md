@@ -215,6 +215,45 @@ google-ai-gemini-key-scripts/
 ## 可选操作申请更多项目配额
 
 若默认的 12 个项目额度不足，你可以在**创建项目之前**前往 [配额申请页面](https://support.google.com/code/contact/project_quota_increase) 申请更多项目配额。具体步骤可参考本仓库或 Google 官方文档，一般需要填写合理的申请理由并等待审核。
+如果你觉得默认的 12 个项目额度不够，可以在开始创建项目前先前往 配额申请页面 来申请更多项目配额。以下是一种参考流程与示例理由，你也可以自行调整内容：
+
+打开链接
+https://support.google.com/code/contact/project_quota_increase
+
+填写基本信息
+
+Company name or website：可以写自己的域名、个人网站或干脆 github.com 等。
+配额 How many projects are being requested? (ex. 5, 10, 20, 50, etc.)：例如填 100。
+What kind of services will these projects use?
+这些项目将使用什么样的服务？
+若你是付费用户，可选择 Both free and paid services，相对减少被封可能。
+编写理由
+
+你可以直接粘贴以下示例，或做适当修改：
+第一种：Iata Analysis
+
+Our ongoing scientific research project requires substantial computational resources for analyzing increasingly complex datasets. We are experiencing limitations with our current quota when running advanced statistical analyses and computational modeling tasks essential to our research goals. An increased quota is necessary to ensure timely completion of our data analysis and to maintain progress in our research.
+第二种：Expanding Simulation Capabilities for Scientific Modeling
+第二种：扩展科学建模的仿真能力
+
+Our research relies heavily on computational simulations to model complex scientific phenomena. We are currently expanding the scope and scale of our simulations, which demands a significant increase in computational resources. The current quota restricts our ability to run larger, more detailed simulations necessary for achieving higher fidelity and more accurate research outcomes. A quota increase is crucial to enable these advanced simulations.
+第三种：Growing Data Storage Needs for Research Datasets
+研究数据集的数据存储需求不断增长
+
+Our scientific research is generating increasingly large datasets that require secure and accessible storage. Our current storage quota is becoming insufficient to accommodate the growing volume of research data. An increased storage quota is essential to ensure we can continue to collect, store, and manage our research data effectively and maintain the integrity of our research outputs.
+第四种：Increased API Usage for Data Acquisition and Integration
+第一点：增加数据采集和集成的 API 使用量
+
+Our research project relies on programmatic access to external scientific databases and APIs to acquire and integrate data from various sources. As our research expands, our usage of these APIs has increased significantly. The current API request quota is limiting our ability to collect the necessary data for our research in a timely manner. A quota increase is needed to facilitate efficient data acquisition.
+第五种：Supporting Collaborative Research and Data Sharing
+第五种：支持协作研究和数据共享
+
+Our research project involves collaboration with multiple research institutions and requires secure data sharing and collaborative analysis environments. The current quota limitations are hindering our ability to effectively support collaborative access to resources and data sharing among our research partners. An increased quota is needed to facilitate seamless collaboration and data sharing, which are critical for the success of our multi-institutional research project.
+提交并等待
+
+提交表单后，通常需等待数小时或数天不等，Google 审核后会给你邮件通知。
+审核通过后，你的项目上限就会增加。
+如果想先不等待审核，也可以直接使用默认的 12 个项目额度开始脚本操作。
 
 ---
 
