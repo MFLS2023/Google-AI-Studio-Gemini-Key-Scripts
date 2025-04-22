@@ -215,7 +215,7 @@ google-ai-gemini-key-scripts/
 ## 可选操作申请更多项目配额
 
 若默认的 12 个项目额度不足，你可以在**创建项目之前**前往 [配额申请页面](https://support.google.com/code/contact/project_quota_increase) 申请更多项目配额。具体步骤可参考本仓库或 Google 官方文档，一般需要填写合理的申请理由并等待审核。
-如果你觉得默认的 12 个项目额度不够，可以在开始创建项目前先前往 配额申请页面 来申请更多项目配额。以下是一种参考流程与示例理由，你也可以自行调整内容：
+以下是一种参考流程与示例理由，你也可以自行调整内容：
  
  1. **打开链接**  
     [https://support.google.com/code/contact/project_quota_increase](https://support.google.com/code/contact/project_quota_increase)
