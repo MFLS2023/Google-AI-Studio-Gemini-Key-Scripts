@@ -172,11 +172,11 @@ If you need more than 12 projects:
 3. Provide a justification. Sample reasons:
 
    > **Increased Computational Research Needs**
-   >
+   > 
    > We are conducting large-scale computational simulations for advanced scientific research. Our current project quota limits our ability to run parallel experiments, leading to delays. A higher project quota would enable timely completion of our research objectives.
 
    > **High-Volume API Integration**
-   >
+   > 
    > Our application integrates data from multiple external APIs for real-time analytics. The existing project quota is restricting our ability to manage separate environments and keys for different stages (dev/staging/prod). We request an increase to maintain clean separation and security best practices.
 
 ---
