@@ -38,8 +38,7 @@
 3. [流程总览](#流程总览)  
 4. [用户自定义配置](#用户自定义配置)  
 5. [油猴脚本与控制台脚本使用方式](#油猴脚本与控制台脚本使用方式)  
-   - [方式一：油猴脚本 —— Google AI Studio Gemini Automation Suite](#方式一油猴脚本-- `Google_AI_Studio_Gemini_Automation_Suite.user.js` / `AI_Studio_API_Key_Clipboard_Automator.user.js`
-)  
+   - [方式一：油猴脚本](#方式一：油猴脚本)
    - [方式二：控制台脚本](#方式二控制台脚本)  
 6. [仓库结构](#仓库结构)  
 7. [常见问题 (FAQ)](#常见问题-faq)  
@@ -141,10 +140,13 @@
 
 ## 油猴脚本与控制台脚本使用方式
 
-### 方式一油猴脚本-- `Google_AI_Studio_Gemini_Automation_Suite.user.js` / `AI_Studio_API_Key_Clipboard_Automator.user.js`
+### 方式一：油猴脚本
+脚本文件：
+- `Google_AI_Studio_Gemini_Automation_Suite.user.js`
+- `AI_Studio_API_Key_Clipboard_Automator.user.js`
 
 此油猴脚本将项目创建、API Key 生成与 Key 提取三大功能集成在一起，并在页面中插入浮动按钮，让操作更直观。 
-前者将 `API KEY` 输出在控制台，而后者自动复制到剪贴板，电脑端用户默认前者方便，手机端用户只能用后者
+第一个脚本将 `API KEY` 输出在控制台，而后者自动复制到剪贴板，电脑端用户默认前者方便，手机端用户只能用后者
 
 #### 使用步骤
 
