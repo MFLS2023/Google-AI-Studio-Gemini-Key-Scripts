@@ -38,7 +38,8 @@
 3. [流程总览](#流程总览)  
 4. [用户自定义配置](#用户自定义配置)  
 5. [油猴脚本与控制台脚本使用方式](#油猴脚本与控制台脚本使用方式)  
-   - [方式一：油猴脚本 —— Google AI Studio Gemini Automation Suite](#方式一油猴脚本--google-ai-studio-gemini-automation-suite)  
+   - [方式一：油猴脚本 —— Google AI Studio Gemini Automation Suite](#方式一油猴脚本-- `Google_AI_Studio_Gemini_Automation_Suite.user.js` / `AI_Studio_API_Key_Clipboard_Automator.user.js`
+)  
    - [方式二：控制台脚本](#方式二控制台脚本)  
 6. [仓库结构](#仓库结构)  
 7. [常见问题 (FAQ)](#常见问题-faq)  
