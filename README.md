@@ -7,7 +7,7 @@
 
 **默认语言：中文**  
 
-本仓库包含了 **3 个核心脚本**，帮助你**批量创建 Google Cloud 项目**并**获取 Google AI Studio（Gemini）API Key**。即便你不熟悉编程，也可按下述步骤轻松上手。  
+本仓库现包含 **2 个 Tampermonkey/Greasemonkey 用户脚本 + 3 个浏览器控制台脚本** ，帮助你**批量创建 Google Cloud 项目**并**获取或管理 Google AI Studio（Gemini）API Key**。  
 适用于需要大规模管理 Key 或频繁创建新项目的场景。
 
 > ⚠️ **重要提示 / 免责声明**  
@@ -17,6 +17,18 @@
 > - Google 可能随时更新界面或接口，如脚本失效，请自行调试或提交 Issue。  
 > - **请遵守 Google Cloud 与 Google AI Studio 的服务条款，避免恶意或高频操作导致账号受限。**  
 > - **如果你觉得本项目有帮助，欢迎点个 Star ⭐️ 支持！**
+
+---
+
+## ✨ 本仓库脚本一览
+
+| 名称 | 文件 | 形态 | 主要功能 | 备注 |
+|------|------|------|----------|------|
+| **AI Studio API Key Clipboard Automator** | `AI_Studio_API_Key_Clipboard_Automator.user.js` | Tampermonkey | ① 批量创建项目<br>② 生成 Key **并自动复制到剪贴板**<br>③ 提取现有 Key 并复制到剪贴板 | **推荐（手机用户）** — 全流程无需打开控制台 |
+| **Google AI Studio Gemini Automation Suite** | `Google_AI_Studio_Gemini_Automation_Suite.user.js` | Tampermonkey | ① 批量创建项目<br>② 生成 Key 并 **输出到浏览器控制台**<br>③ 提取现有 Key 至控制台 | **推荐（电脑用户）** |
+| Create-Projects | `CreateProjects.js` | 控制台脚本 | 仅批量创建项目 | 需手动粘贴到 Cloud Console |
+| Fetch-Api-Keys | `FetchApiKeys.js` | 控制台脚本 | 为每个项目生成 Key | 需手动粘贴到 AI Studio |
+| Fetch-All-Existing-Keys | `FetchAllExistingKeys.js` | 控制台脚本 | 提取账号下全部现有 Key | 需手动粘贴到 AI Studio |
 
 ---
 
@@ -110,22 +122,28 @@
 
 ## 用户自定义配置
 
-如果你使用 **油猴脚本**，在脚本开头会有一个名为 `CONFIG` 的对象，你可在其中修改以下参数：  
-- **PROJECT_CREATION_COUNT**：默认创建项目数（如 5）。  
-- **API_KEYS_PER_PROJECT**：每个项目要创建的 Key 数量（如 1）。  
-- **PROJECT_CREATION_DELAY**：两次创建项目之间的间隔时间（毫秒）。  
-- **API_KEY_CREATION_DELAY**：两次生成 Key 之间的间隔时间（毫秒）。  
-- **SELECT_CHANGE_DELAY**：下拉框选项点击后，额外等待时间（毫秒）以确保操作生效。
+两份 Tampermonkey 脚本顶部均有 **`CONFIG`** 常量（或直接在代码中有同名变量）可自定义参数：
 
-如果你对脚本略懂修改，可以根据自己网络速度和需求微调这些值以减少错误。
+| 参数 | 说明 | 默认值 |
+|------|------|-------|
+| `TARGET` / `PROJECT_CREATION_COUNT` | 本轮创建的项目数量 | 5 |
+| `API_KEYS_PER_PROJECT` | 每个项目要生成的 Key 数 | 1 |
+| `BETWEEN` / `PROJECT_CREATION_DELAY` | 连续创建项目的间隔 (ms) | 5000 |
+| `API_KEY_CREATION_DELAY` | 连续生成 Key 的间隔 (ms) | 2500 |
+| `SELECT_CHANGE_DELAY` | 选择下拉框后额外等待 (ms) | 1000 |
+| `MAXR` | 创建异常时最多自动刷新次数 | 5 |
+
+> 建议先按默认配置试运行；如出现超时/配额问题，再适当调大间隔或调低数量。
+
 
 ---
 
 ## 油猴脚本与控制台脚本使用方式
 
-### 方式一油猴脚本--google-ai-studio-gemini-automation-suite
+### 方式一油猴脚本-- `Google_AI_Studio_Gemini_Automation_Suite.user.js` / `AI_Studio_API_Key_Clipboard_Automator.user.js`
 
-此油猴脚本将项目创建、API Key 生成与 Key 提取三大功能集成在一起，并在页面中插入浮动按钮，让操作更直观。  
+此油猴脚本将项目创建、API Key 生成与 Key 提取三大功能集成在一起，并在页面中插入浮动按钮，让操作更直观。 
+前者将 `API KEY` 输出在控制台，而后者自动复制到剪贴板，电脑端用户默认前者方便，手机端用户只能用后者
 
 #### 使用步骤
 
@@ -134,7 +152,7 @@
    - 懒得搜索，也可以点[这里](https://www.tampermonkey.net/)直达 
 
 2. **导入油猴脚本**  
-   - 将本仓库中的 `Google_AI_Studio_Gemini_Automation_Suite.user.js` 文件保存后，添加到 Tampermonkey。  
+   - 将本仓库中的 `Google_AI_Studio_Gemini_Automation_Suite.user.js` (`AI_Studio_API_Key_Clipboard_Automator.user.js`)文件保存后，添加到 Tampermonkey。  
    - 若需自定义项目数、等待时间等配置，可在脚本开头的 `CONFIG` 对象中进行修改。  
 
 3. **操作说明**  
@@ -173,11 +191,13 @@
 
 ```bash
 google-ai-gemini-key-scripts/
+├─ AI_Studio_API_Key_Clipboard_Automator.user.js          # 油猴脚本**自动复制到剪贴板**版（整合全部功能）
 ├─ CreateProjects.js           # (Step 1) 控制台脚本版：自动创建项目脚本
 ├─ FetchApiKeys.js             # (Step 2) 控制台脚本版：自动为项目创建并获取 API Key
 ├─ FetchAllExistingKeys.js     # (Step 3, 可选) 控制台脚本版：提取所有已有的 API Key
-├─ Google_AI_Studio_Gemini_Automation_Suite.user.js  # 油猴脚本版（整合全部功能）
-├─ README.md                   # 本文档（中文版）
+├─ Google_AI_Studio_Gemini_Automation_Suite.user.js       # 油猴脚本**控制台输出**版（整合全部功能）
+├─ README.en.md               # English documentation
+└── README.md                 # 本文档（中文版）
 ```
 
 ---
