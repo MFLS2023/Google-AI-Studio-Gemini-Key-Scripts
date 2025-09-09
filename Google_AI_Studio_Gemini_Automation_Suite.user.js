@@ -1,44 +1,69 @@
 // ==UserScript==
-// @name         AI Studio 多功能脚本合集（更新版）
+// @name         AI Studio 多功能脚本合集（最终整合版）
 // @namespace    http://tampermonkey.net/
-// @version      1.4.3
-// @description  此脚本整合了三个主要功能：
-//               1. 项目创建流程：在 console.cloud.google.com 页面自动创建目标数（默认5个）的项目；
-//               2. API KEY 自动生成流程：在项目创建完成后，自动跳转到 aistudio.google.com/apikey 页面生成 API KEY；
-//               3. API KEY 提取流程：在 aistudio 页面上提取现有 API KEY。
-//               脚本会自动监测当前页面所属域，如果用户点击创建功能而不在目标页面，则自动跳转到 console.cloud.google.com；
-//               同理，点击提取功能时如果不在 aistudio.google.com 页面，则自动跳转到目标页面。
-//               此外，脚本利用 MutationObserver、定时器、路由变化监听和 window 的 load/DOMContentLoaded 事件，确保悬浮按钮能自动插入，无需手动刷新。
-//
-// 【重要说明】
-// 1. 本脚本仅为内部自动化操作脚本，部分错误提示（例如来自Google Tag Manager的）是由第三方脚本引起，与本脚本功能无关。
-// 2. 请确保目标网站的页面结构未发生变化，否则部分 CSS 选择器可能需要调整。
-// 3. 如果你的项目中存在敏感信息（例如 API KEY），请注意脚本输出的密钥内容可能会在控制台中显示，请妥善保管日志信息。
-// 4. 以下部分参数用户可以根据需要自定义调整：
-//    - TARGET_PROJECT_CREATIONS：项目创建的目标数量，默认值为 5。
-//    - DELAY_BETWEEN_ATTEMPTS：每次项目创建之间的等待时间，默认 5000 毫秒（即 5 秒）。
-//    - MAX_AUTO_REFRESH_ON_ERROR：自动刷新重试的最大次数，默认值为 5。
-//    - 下拉框选项触发 change 事件后的等待时间，在 runApiKeyCreation 中由延时 1000 毫秒来确保选项生效。
-//    - 各等待延时（例如等待 1500 毫秒、2000 毫秒等），可根据页面加载速度进行调整。
-//
-// 【敏感变量】
-// 本脚本中敏感变量主要有：
-//    - API KEY：由 Google Cloud 自动生成，脚本只是提取和输出，不建议在代码中硬编码修改。
-//    - GM_setValue / GM_getValue 用于跨域存储标记，确保创建流程和 API KEY 生成流程能够串联操作。
-//
-// 【运行范围】
-// 该脚本在所有 console.cloud.google.com 与 aistudio.google.com 的子域下均生效（@match 改为 *://*.console.cloud.google.com/* 与 *://*.aistudio.google.com/*）。
-//
-// @author       YourName
+// @version      2.0.0
+// @description  此脚本整合了三个主要功能：1. 自动创建谷歌云项目。 2. 使用新的v15.7高级脚本自动为项目创建API KEY（支持自定义、重试、断点续传）。 3. 自动提取页面上已有的API KEY。
+// @author       YourName & Gemini
 // @match        *://*.console.cloud.google.com/*
 // @match        *://*.aistudio.google.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
+// @grant        GM_addStyle
 // @run-at       document-idle
 // ==/UserScript==
 
 (function () {
     'use strict';
+
+    /*******************************
+     * 新版API KEY脚本的用户自定义配置
+     *******************************/
+    const CONFIG = {
+        // 每个项目要生成的 Key 数量
+        API_KEYS_PER_PROJECT: 1,
+        // 成功创建一个 Key 后，到下一个操作的间隔 (毫秒)
+        API_KEY_CREATION_DELAY: 2500,
+        // 在下拉框中选择一个项目后，额外等待的时间 (毫秒)
+        SELECT_CHANGE_DELAY: 1000,
+        // 创建过程中发生网络错误等异常时，脚本自动刷新页面并重试的最大次数
+        MAX_RETRIES: 5,
+    };
+    const RETRY_STATE_KEY = 'geminiApiRetryState';
+
+    /*******************************
+     * 新版API KEY脚本的UI和诊断工具
+     *******************************/
+    let diagnosticBox = null;
+    let diagnosticStatusEl = null;
+    function createDiagnosticBox() {
+        if (document.getElementById('gm-diagnostic-box')) return;
+        diagnosticBox = document.createElement('div');
+        diagnosticBox.id = 'gm-diagnostic-box';
+        const t = document.createElement('strong');
+        t.textContent = 'Gemini脚本(v15.7)';
+        diagnosticStatusEl = document.createElement('span');
+        diagnosticStatusEl.textContent = '状态: 初始化...';
+        diagnosticBox.appendChild(t);
+        diagnosticBox.appendChild(document.createElement('br'));
+        diagnosticBox.appendChild(diagnosticStatusEl);
+        document.body.appendChild(diagnosticBox);
+    }
+    function updateDiagnostic(t, e = "info") {
+        if (!diagnosticBox) {
+            if (document.body) {
+                createDiagnosticBox();
+            } else {
+                document.addEventListener('DOMContentLoaded', createDiagnosticBox, { once: true });
+                setTimeout(() => updateDiagnostic(t, e), 50);
+                return;
+            }
+        }
+        diagnosticStatusEl.textContent = `状态: ${t}`;
+        diagnosticBox.style.backgroundColor = "error" === e ? "#ffdddd" : "#e6f4ff";
+        diagnosticBox.style.color = "error" === e ? "#d8000c" : "#00529B";
+    }
+    GM_addStyle(`#gm-diagnostic-box{position:fixed;top:10px;left:10px;padding:8px;background-color:#e6f4ff;border:1px solid #b3d4ff;border-radius:5px;font-family:Arial,sans-serif;font-size:12px;color:#00529B;z-index:99999;box-shadow:0 2px 5px rgba(0,0,0,0.1);line-height:1.4}`);
+
 
     /*******************************
      * 公共工具函数
@@ -91,9 +116,10 @@
     }
 
     /*******************************
-     * 1. 项目创建流程（原 CreateProjects.js）
+     * 1. 项目创建流程（原样保留）
      *******************************/
     async function runProjectCreation() {
+        // ... (这部分代码与您提供的旧脚本完全相同，为了简洁在此处省略)
         // 若当前页面不在 console.cloud.google.com 域，则自动跳转过去
         if (!location.host.includes("console.cloud.google.com")) {
             // 自动跳转，无需提示用户点击确认
@@ -287,261 +313,155 @@
         console.log("--- 项目创建流程结束 ---");
     }
 
+
     /*******************************
-     * 2. API KEY 自动生成流程（原 FetchApiKeys.js）
+     * 2. API KEY 自动生成流程 (v15.7 - 高级自定义版)
      *******************************/
-    async function runApiKeyCreation() {
-        console.log("--- 开始为每个项目创建 API 密钥 ---");
-        const keysPerProjectTarget = 1;
-        const apiKeyWaitTimeout = 25000;
-        const delayBetweenAttempts = 2500;
-        const delayBetweenProjects = 4000;
-        const closeDialogTimeout = 5000;
-        const mainCreateButtonSelector = "button.create-api-key-button";
-        const dialogSelector = "mat-dialog-content";
-        const projectSearchInputSelector = "input#project-name-input";
-        const projectOptionSelector = "mat-option.mat-mdc-option";
-        const projectNameInsideOptionSelector = ".gmat-body-medium";
-        const dialogCreateButtonSelector = "mat-dialog-content button.create-api-key-button";
-        const apiKeyDisplaySelector = "div.apikey-text";
-        const closeButtonSelectors = [
-            "button[aria-label='关闭']",
-            "button.close-button",
-            "button:contains('Done')",
-            "button:contains('完成')",
-            "button:contains('Close')",
-            "mat-dialog-actions button:last-child"
-        ];
-        const generatedKeysSummary = {};
-        const allKeys = [];
+    async function runNewApiKeyCreation() {
+        updateDiagnostic("脚本已注入, 等待页面加载...");
 
-        async function waitForEl(selector, timeout = 20000, root = document, checkDisabled = true) {
-            const start = Date.now();
-            while (Date.now() - start < timeout) {
-                let element = null;
-                if (selector.includes(':contains')) {
-                    const textMatch = selector.match(/:contains\(['"]([^'"]+)['"]\)/i);
-                    const baseSelector = selector.split(':')[0];
-                    if (textMatch && textMatch[1]) {
-                        element = findButtonWithText(textMatch[1], root, baseSelector);
-                    } else {
-                        element = root.querySelector(baseSelector);
-                    }
-                } else {
-                    element = root.querySelector(selector);
-                }
-                let isDisabled = checkDisabled ? element?.disabled : false;
-                if (element && element.offsetParent !== null && !isDisabled) {
-                    const style = window.getComputedStyle(element);
-                    if (style && style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0) {
-                        return element;
-                    }
-                }
-                await delay(300);
-            }
-            throw new Error(`元素 "${selector}" 等待超时 (${timeout}ms)`);
-        }
+        async function createAllNewGeminiApiKeys(retryState = {}) {
+            const {
+                initialProjects = [],
+                initialKeys = [],
+                startIndex = 0,
+                retryCount = 0
+            } = retryState;
 
-        function findButtonWithText(text, root = document, baseSelector = 'button') {
-            const buttons = root.querySelectorAll(baseSelector);
-            const lowerText = text.toLowerCase();
-            for (const btn of buttons) {
-                if (btn.getAttribute('aria-label') && btn.getAttribute('aria-label').toLowerCase().includes(lowerText))
-                    return btn;
-                if (btn.textContent && btn.textContent.trim().toLowerCase() === lowerText)
-                    return btn;
-            }
-            return null;
-        }
+            // 新版脚本的内部辅助函数
+            const delay = (ms) => new Promise(res => setTimeout(res, ms));
+            const waitForElementInDom=(s,t=3e4)=>new Promise((r,e)=>{let i=100,n=0;const o=setInterval(()=>{const c=document.querySelector(s);if(c)return clearInterval(o),r(c);(n+=i)>=t&&(clearInterval(o),e(new Error(`等待元素 "${s}" 超时`)))},i)});
+            const waitForElementToBeEnabled=(s,t=1e4)=>new Promise((r,e)=>{let i=100,n=0;const o=setInterval(()=>{const c=document.querySelector(s);if(c&&!c.disabled)return clearInterval(o),r(c);(n+=i)>=t&&(clearInterval(o),e(new Error(`等待元素 "${s}" 可用超时`)))},i)});
+            const findButtonByText=t=>{for(const r of t){const e=`//button[contains(., '${r.trim()}')]`,i=document.evaluate(e,document,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null).singleNodeValue;if(i)return i}return null};
+            const createCopyUI=t=>{const r="gemini-keys-copier";document.getElementById(r)?.remove();const e=document.createElement("div");e.id=r,Object.assign(e.style,{position:"fixed",top:"20px",right:"20px",zIndex:"9999",backgroundColor:"#f0f4f9",border:"1px solid #dcdcdc",borderRadius:"8px",padding:"15px",boxShadow:"0 4px 12px rgba(0,0,0,0.15)",fontFamily:"Arial, sans-serif",color:"#333",width:"400px"});const i=document.createElement("h3");i.textContent=`成功创建 ${t.length} 个新的 API Key`,Object.assign(i.style,{margin:"0 0 10px 0",fontSize:"16px"});const n=document.createElement("textarea");n.value=t.join("\n"),Object.assign(n.style,{width:"100%",minHeight:"150px",marginBottom:"10px",border:"1px solid #ccc",borderRadius:"4px",padding:"5px"}),n.readOnly=!0;const o=document.createElement("button");o.textContent="一键复制全部",Object.assign(o.style,{padding:"8px 12px",border:"none",borderRadius:"4px",backgroundColor:"#1a73e8",color:"white",cursor:"pointer"}),o.onclick=()=>{navigator.clipboard.writeText(n.value).then(()=>{o.textContent="已复制!",setTimeout(()=>{o.textContent="一键复制全部"},2e3)})};const c=document.createElement("button");c.textContent="关闭",Object.assign(c.style,{marginLeft:"10px",padding:"8px 12px",border:"1px solid #ccc",borderRadius:"4px",backgroundColor:"#fff",color:"#333",cursor:"pointer"}),c.onclick=()=>e.remove(),e.appendChild(i),e.appendChild(n),e.appendChild(o),e.appendChild(c),document.body.appendChild(e)};
 
-        async function robustCloseDialog() {
-            console.log("尝试关闭对话框...");
-            let closed = false;
-            if (!document.querySelector("mat-dialog-container")) {
-                console.log("对话框已关闭或不存在。");
-                return true;
-            }
-            for (const selector of closeButtonSelectors) {
-                try {
-                    let buttonToClick = await waitForEl(selector, closeDialogTimeout, document);
-                    if (buttonToClick) {
-                        console.log(`找到关闭按钮 (${selector})，点击中...`);
-                        buttonToClick.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        await delay(300);
-                        buttonToClick.click();
-                        await delay(1500);
-                        if (!document.querySelector("mat-dialog-container")) {
-                            console.log("对话框已成功关闭。");
-                            closed = true;
-                            break;
-                        } else {
-                            console.warn(`点击 (${selector}) 后对话框仍存在。`);
-                        }
-                    }
-                } catch (error) {}
-            }
-            if (!closed) {
-                console.warn("未能通过按钮关闭，尝试点击页面 Body...");
-                document.body.click();
-                await delay(1000);
-                if (!document.querySelector("mat-dialog-container")) {
-                    console.log("对话框通过点击 Body 关闭。");
-                    closed = true;
-                } else {
-                    console.error("强力关闭失败，对话框仍存在！");
-                }
-            }
-            return closed;
-        }
+            let newResults = [...initialKeys];
+            let projectsToProcess = [...initialProjects];
+            let currentProjectIndex = startIndex;
 
-        let numberOfProjects = 0;
-        let projectOptionsInfo = [];
-        try {
-            console.log("[步骤 0] 获取项目列表信息...");
-            const mainBtnInit = await waitForEl(mainCreateButtonSelector);
-            mainBtnInit.click();
-            const dialogInit = await waitForEl(dialogSelector);
-            const searchInputInit = await waitForEl(projectSearchInputSelector, 15000, dialogInit);
-            searchInputInit.click();
-            await delay(2000);
-            const initialProjectOptions = await waitForElements(projectOptionSelector, 1, 20000, document);
-            numberOfProjects = initialProjectOptions.length;
-            console.log(`检测到 ${numberOfProjects} 个项目。`);
-            projectOptionsInfo = Array.from(initialProjectOptions).map((option, index) => {
-                let name = `项目 ${index + 1}`;
-                try {
-                    const nameElement = option.querySelector(projectNameInsideOptionSelector);
-                    if (nameElement && nameElement.textContent) {
-                        name = nameElement.textContent.trim();
-                    }
-                } catch {}
-                return { name: name };
-            });
-            console.log("项目名称列表:", projectOptionsInfo.map(p => p.name));
-            await robustCloseDialog();
-        } catch (initialError) {
-            console.error("获取项目列表时出错:", initialError.message);
-            throw initialError;
-        }
-        if (numberOfProjects === 0) {
-            console.log("未检测到任何项目，流程结束。");
-            return;
-        }
-        for (let projectIndex = 0; projectIndex < numberOfProjects; projectIndex++) {
-            const currentProjectName = projectOptionsInfo[projectIndex]?.name || `项目 ${projectIndex + 1}`;
-            console.log(`\n===== 开始处理项目 ${projectIndex + 1}/${numberOfProjects}: "${currentProjectName}" =====`);
-            generatedKeysSummary[currentProjectName] = [];
-            let skipRemainingAttempts = false;
-            for (let keyAttempt = 0; keyAttempt < keysPerProjectTarget; keyAttempt++) {
-                if (skipRemainingAttempts) break;
-                console.log(`--- [${currentProjectName}] 尝试创建密钥 ${keyAttempt + 1}/${keysPerProjectTarget} ---`);
-                let dialogElement = null;
-                let apiKeyElement = null;
-                let closeSuccess = false;
-                try {
-                    console.log("  [1/7] 点击主创建按钮...");
-                    const mainCreateButton = await waitForEl(mainCreateButtonSelector);
-                    mainCreateButton.click();
+            try {
+                if (projectsToProcess.length === 0) {
+                    console.log("🚀 脚本首次执行 (v15.7)...");
+                    updateDiagnostic("阶段1: 获取项目列表...");
+                    const createKeyButtonMain = findButtonByText(["Create API key", "创建 API 密钥"]);
+                    if (!createKeyButtonMain) throw new Error("无法找到主'创建 API 密钥'按钮。");
+                    createKeyButtonMain.click();
+                    const projectSearchInput = await waitForElementInDom('input[aria-label="Search Google Cloud projects"], input[aria-label="搜索 Google Cloud 项目"]');
+                    projectSearchInput.click();
+                    await waitForElementInDom('mat-option .project-display-name, mat-option .v3-font-body');
                     await delay(500);
-                    console.log("  [2/7] 等待对话框并展开列表...");
-                    dialogElement = await waitForEl(dialogSelector);
-                    const searchInput = await waitForEl(projectSearchInputSelector, 15000, dialogElement);
-                    searchInput.click();
-                    await delay(2000);
-                    console.log(`  [3/7] 选择项目 "${currentProjectName}" ...`);
-                    const allProjectOptions = await waitForElements(projectOptionSelector, numberOfProjects, 20000, document);
-                    if (projectIndex >= allProjectOptions.length) {
-                        console.error(`错误: 项目索引 ${projectIndex} 越界 (当前项目数 ${allProjectOptions.length})。`);
-                        skipRemainingAttempts = true;
-                        continue;
-                    }
-                    const targetProjectOption = allProjectOptions[projectIndex];
-                    targetProjectOption.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                    await delay(300);
-                    targetProjectOption.click();
-                    // 额外派发 change 事件，并延长等待时间（1000ms），确保下拉框选中生效
-                    targetProjectOption.dispatchEvent(new Event('change', { bubbles: true }));
-                    await delay(1000);
-                    console.log("等待项目选择生效...");
-                    await delay(2500);
-                    console.log("  [4/7] 点击对话框内最终创建按钮...");
-                    const dialogCreateButton = await waitForEl(dialogCreateButtonSelector, 10000, dialogElement, false);
-                    dialogCreateButton.click();
-                    console.log(`  [5/7] 等待 API KEY 显示（最长${apiKeyWaitTimeout/1000}秒）...`);
-                    try {
-                        apiKeyElement = await waitForElement(apiKeyDisplaySelector, apiKeyWaitTimeout, document, false);
-                        console.log("    新 API KEY 元素已出现。");
-                    } catch (apiKeyWaitError) {
-                        console.warn(`等待 API KEY 超时或失败: ${apiKeyWaitError.message}`);
-                        skipRemainingAttempts = true;
-                        await robustCloseDialog();
-                        continue;
-                    }
-                    console.log("  [6/7] 提取 API KEY...");
-                    let apiKey = '';
-                    if (apiKeyElement) {
-                        if (apiKeyElement.tagName === 'INPUT')
-                            apiKey = apiKeyElement.value;
-                        else if (apiKeyElement.textContent)
-                            apiKey = apiKeyElement.textContent;
-                        else
-                            apiKey = apiKeyElement.innerText;
-                        apiKey = apiKey.trim();
-                        if (apiKey) {
-                            console.log(`    成功! 项目 "${currentProjectName}" 生成的 API KEY: ${apiKey}`);
-                            generatedKeysSummary[currentProjectName].push(apiKey);
-                            allKeys.push(apiKey);
-                        } else {
-                            console.error(`    错误: 提取到空的 API KEY (尝试 ${keyAttempt + 1})。`);
+                    const projectListContainer = await waitForElementInDom('div[role="listbox"]');
+                    projectListContainer.querySelectorAll('mat-option').forEach(opt => {
+                        const nameEl = opt.querySelector('.project-display-name, .v3-font-body');
+                        const idEl = opt.querySelector('.project-id-text');
+                        if (nameEl && idEl) { projectsToProcess.push({ displayName: nameEl.textContent.trim(), projectID: idEl.textContent.trim() }); }
+                    });
+                    console.log(`ℹ️  侦察到 ${projectsToProcess.length} 个项目。`);
+                    (await waitForElementInDom('button[iconname="close"]')).click();
+                    await delay(1500);
+                } else {
+                    console.log(`🚀 脚本从断点恢复执行... (重试次数: ${retryCount}/${CONFIG.MAX_RETRIES})`);
+                    updateDiagnostic(`恢复执行 (重试 ${retryCount}/${CONFIG.MAX_RETRIES})`);
+                }
+
+                updateDiagnostic("阶段2: 逐个创建密钥...");
+                for (currentProjectIndex = startIndex; currentProjectIndex < projectsToProcess.length; currentProjectIndex++) {
+                    const project = projectsToProcess[currentProjectIndex];
+                    const projectDisplayName = project.displayName.substring(0, 20);
+
+                    for (let k = 0; k < CONFIG.API_KEYS_PER_PROJECT; k++) {
+                        console.log(`\n⏳ 为项目 "${project.displayName}" 创建 Key (${k + 1}/${CONFIG.API_KEYS_PER_PROJECT})...`);
+                        updateDiagnostic(`项目 ${currentProjectIndex + 1}/${projectsToProcess.length}: ${projectDisplayName}... (Key ${k + 1}/${CONFIG.API_KEYS_PER_PROJECT})`);
+
+                        findButtonByText(["Create API key", "创建 API 密钥"]).click();
+                        const searchInput = await waitForElementInDom('input[aria-label="Search Google Cloud projects"], input[aria-label="搜索 Google Cloud 项目"]');
+                        searchInput.click();
+                        await waitForElementInDom('mat-option .project-display-name');
+                        await delay(500);
+                        const listContainer = await waitForElementInDom('div[role="listbox"]');
+                        const options = Array.from(listContainer.querySelectorAll('mat-option'));
+                        const targetOption = options.find(opt => {
+                            const idEl = opt.querySelector('.project-id-text');
+                            return idEl && idEl.textContent.trim() === project.projectID;
+                        });
+
+                        if (!targetOption) {
+                            console.warn(`   -> ⚠️ 找不到项目 "${project.displayName}"，跳过。`);
+                            (await waitForElementInDom('button[iconname="close"]')).click();
+                            await delay(1000);
+                            continue;
                         }
-                    } else {
-                        console.error(`    内部错误：步骤成功但未找到 API KEY 元素 (尝试 ${keyAttempt + 1})`);
+
+                        targetOption.click();
+                        await delay(CONFIG.SELECT_CHANGE_DELAY);
+                        const createInProjectButton = await waitForElementToBeEnabled('.create-api-key-button');
+                        createInProjectButton.click();
+                        const apiKeyElement = await waitForElementInDom('div.apikey-text', 25000);
+                        const apiKey = apiKeyElement.textContent.trim();
+                        if (apiKey && apiKey.startsWith("AIza")) {
+                            newResults.push({ "项目名称": project.displayName, "项目 ID": project.projectID, "API Key": apiKey });
+                            console.log(`   -> ✅ 成功: ...${apiKey.slice(-4)}`);
+                        } else { throw new Error("读取API Key失败或格式不正确。") }
+                        (await waitForElementInDom('button[iconname="close"]')).click();
+                        await delay(CONFIG.API_KEY_CREATION_DELAY);
                     }
-                    console.log("  [7/7] 强力关闭对话框...");
-                    closeSuccess = await robustCloseDialog();
-                    if (!closeSuccess) {
-                        console.error("    无法关闭对话框，跳过此项目剩余尝试。");
-                        skipRemainingAttempts = true;
+                }
+
+                console.log("\n\n🎉🎉🎉 [阶段 3/3] 全部任务完成！🎉🎉🎉");
+                updateDiagnostic("全部完成！");
+                sessionStorage.removeItem(RETRY_STATE_KEY);
+                if (newResults.length > 0) {
+                    console.log(`总共创建了 ${newResults.length} 个新密钥:`);
+                    console.table(newResults);
+                    createCopyUI(newResults.map(item => item["API Key"]));
+                } else { console.warn("未创建任何新密钥。") }
+
+            } catch (error) {
+                console.error("❌ 脚本执行出错:", error);
+                if (retryCount < CONFIG.MAX_RETRIES) {
+                    const newState = { initialProjects: projectsToProcess, initialKeys: newResults, startIndex: currentProjectIndex, retryCount: retryCount + 1 };
+                    sessionStorage.setItem(RETRY_STATE_KEY, JSON.stringify(newState));
+                    const msg = `错误，将在5秒后刷新重试 (${retryCount + 1}/${CONFIG.MAX_RETRIES})...`;
+                    console.warn(msg);
+                    updateDiagnostic(msg, 'error');
+                    setTimeout(() => location.reload(), 5000);
+                } else {
+                    const msg = `已达到最大重试次数 (${CONFIG.MAX_RETRIES})，脚本终止。`;
+                    console.error(msg);
+                    updateDiagnostic(msg, 'error');
+                    sessionStorage.removeItem(RETRY_STATE_KEY);
+                    if (newResults.length > 0) {
+                        console.log("这是在最终失败前已获取的部分密钥:");
+                        console.table(newResults);
+                        createCopyUI(newResults.map(item => item["API Key"]));
                     }
-                    if (!skipRemainingAttempts) {
-                        console.log(`--- 尝试 ${keyAttempt + 1} 完成，等待 ${delayBetweenAttempts/1000} 秒 ---`);
-                        await delay(delayBetweenAttempts);
-                    }
-                } catch (error) {
-                    console.error(`在项目 "${currentProjectName}" 尝试创建 API KEY 时发生错误: ${error.message}`);
-                    await robustCloseDialog();
-                    await delay(delayBetweenAttempts);
                 }
             }
-            if (skipRemainingAttempts) {
-                console.log(`===== 项目 "${currentProjectName}" 跳过后续尝试 =====`);
-            } else {
-                console.log(`===== 完成项目 "${currentProjectName}" 的所有 API KEY 尝试 =====`);
+        }
+
+        // 检查是否存在需要恢复的重试任务
+        const savedStateJSON = sessionStorage.getItem(RETRY_STATE_KEY);
+        if (savedStateJSON) {
+            console.log("检测到未完成的重试任务，脚本将自动启动...");
+            updateDiagnostic("检测到重试任务, 自动启动...");
+            try {
+                const savedState = JSON.parse(savedStateJSON);
+                await createAllNewGeminiApiKeys(savedState);
+            } catch (e) {
+                console.error("解析重试状态失败:", e);
+                sessionStorage.removeItem(RETRY_STATE_KEY);
             }
-            console.log(`等待 ${delayBetweenProjects/1000} 秒后处理下一个项目...`);
-            await delay(delayBetweenProjects);
-        }
-        console.log("\n=================== API KEY 创建流程总结 ===================");
-        for (const projectName in generatedKeysSummary) {
-            const keys = generatedKeysSummary[projectName];
-            console.log(`项目: "${projectName}" 成功生成 ${keys.length} 个 API KEY:`);
-            keys.forEach((key, index) => console.log(`  ${index + 1}: ${key}`));
-        }
-        if (allKeys.length > 0) {
-            console.log("\n--- 所有生成的 API KEY (复制下面的内容) ---");
-            const outputString = allKeys.map(key => `${key},`).join('\n');
-            console.log("```\n" + outputString + "\n```");
-            console.log("--- API KEY 列表结束 ---");
         } else {
-            console.log("本次运行未生成任何 API KEY。");
+             await createAllNewGeminiApiKeys();
         }
-        console.log("--- API KEY 自动生成流程结束 ---");
     }
 
+
     /*******************************
-     * 3. 提取现有 API KEY 流程（原 FetchAllExistingKeys.js）
+     * 3. 提取现有 API KEY 流程（原样保留）
      *******************************/
     async function runExtractKeys() {
+        // ... (这部分代码与您提供的旧脚本完全相同，为了简洁在此处省略)
         console.clear();
         console.log("--- 开始提取现有 API KEY ---");
         if (window.innerWidth < 1200) {
@@ -754,147 +674,138 @@
         }
     }
 
+
     /*******************************
-     * 4. 整体控制入口
-     *
-     * 当点击“创建项目并获取API KEY”按钮时：
-     *   - 如果当前处于 console.cloud.google.com，则先执行项目创建，
-     *     创建完成后使用 GM_setValue 设置标记，并自动跳转到 https://aistudio.google.com/apikey；
-     *   - 如果当前已在 aistudio.google.com 下，则直接执行 API KEY 自动生成流程。
+     * 4. 整体控制与UI入口 (已更新)
      *******************************/
     async function createProjectsAndGetApiKeys() {
         if (location.host.includes("console.cloud.google.com")) {
             await runProjectCreation();
+            // 设置标记，以便跳转后自动执行
             GM_setValue("projectsCreated", true);
             window.location.href = "https://aistudio.google.com/apikey";
         } else {
-            await runApiKeyCreation();
+            // 如果已经在 aistudio 页面，直接执行创建KEY的流程
+            await runNewApiKeyCreation();
         }
     }
 
-    /*******************************
-     * 如果当前在 aistudio 页面且存在“projectsCreated”标记，则自动执行 API KEY 生成流程
-     *******************************/
+    // 页面加载后，检查是否存在跳转标记，如果存在，则自动执行新的API KEY创建流程
     if (location.host.includes("aistudio.google.com") && GM_getValue("projectsCreated", false)) {
+        // 清除标记，防止刷新后重复执行
         GM_setValue("projectsCreated", false);
-        delay(1000).then(() => runApiKeyCreation());
+        // 延迟执行，确保页面加载完成
+        delay(2000).then(() => {
+            console.log("检测到项目创建完成的跳转，将自动开始创建 API KEY...");
+            runNewApiKeyCreation();
+        });
     }
 
-    /*******************************
-     * 悬浮按钮自动插入 —— 利用 MutationObserver、定时器及路由变化监听
-     *******************************/
     function initFloatingButtons() {
         if (document.getElementById('ai-floating-buttons')) return;
         const container = document.createElement('div');
         container.id = 'ai-floating-buttons';
-        container.style.position = 'fixed';
-        container.style.top = '10px';
-        container.style.right = '10px';
-        container.style.zIndex = '9999';
-        container.style.display = 'flex';
-        container.style.flexDirection = 'column';
-        container.style.gap = '5px';
-        container.style.background = 'rgba(255,255,255,0.9)';
-        container.style.padding = '5px';
-        container.style.borderRadius = '4px';
-        container.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+        Object.assign(container.style, {
+            position: 'fixed', top: '10px', right: '10px', zIndex: '9999',
+            display: 'flex', flexDirection: 'column', gap: '5px',
+            background: 'rgba(255,255,255,0.9)', padding: '5px',
+            borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        });
+
+        const btnStyle = {
+            padding: '5px 10px', fontSize: '14px', cursor: 'pointer',
+            border: '1px solid #ccc', background: '#f0f0f0'
+        };
 
         const btnCreateAndGet = document.createElement('button');
-        btnCreateAndGet.textContent = '创建项目并获取API KEY';
-        btnCreateAndGet.style.padding = '5px 10px';
-        btnCreateAndGet.style.fontSize = '14px';
-        btnCreateAndGet.style.cursor = 'pointer';
+        btnCreateAndGet.textContent = '1. 创建项目并获取KEY';
+        Object.assign(btnCreateAndGet.style, btnStyle);
+
+        const btnCreateOnly = document.createElement('button');
+        btnCreateOnly.textContent = '2. 仅创建API KEY (新)';
+        Object.assign(btnCreateOnly.style, btnStyle);
 
         const btnExtract = document.createElement('button');
-        btnExtract.textContent = '提取API KEY';
-        btnExtract.style.padding = '5px 10px';
-        btnExtract.style.fontSize = '14px';
-        btnExtract.style.cursor = 'pointer';
+        btnExtract.textContent = '3. 提取现有API KEY';
+        Object.assign(btnExtract.style, btnStyle);
 
         container.appendChild(btnCreateAndGet);
+        container.appendChild(btnCreateOnly);
         container.appendChild(btnExtract);
         document.body.appendChild(container);
 
+        // --- 按钮事件监听 ---
         btnCreateAndGet.addEventListener('click', async () => {
-            // 自动跳转至 console 页面（无需提示）
-            if (!location.host.includes("console.cloud.google.com")) {
+             if (!location.host.includes("console.cloud.google.com")) {
+                GM_setValue("projectsCreated", true); //预设标志
                 window.location.href = "https://console.cloud.google.com";
                 return;
             }
-            btnCreateAndGet.disabled = true;
-            btnCreateAndGet.textContent = '运行中...';
+            btnCreateAndGet.disabled = true; btnCreateAndGet.textContent = '运行中...';
             try {
                 await createProjectsAndGetApiKeys();
-                btnCreateAndGet.textContent = '创建项目并获取APIKEY (完成)';
+                btnCreateAndGet.textContent = '跳转中...';
             } catch (e) {
                 console.error('运行错误:', e);
                 btnCreateAndGet.textContent = '运行错误，检查控制台';
+                 setTimeout(() => {
+                    btnCreateAndGet.disabled = false;
+                    btnCreateAndGet.textContent = '1. 创建项目并获取KEY';
+                }, 3000);
             }
-            setTimeout(() => {
-                btnCreateAndGet.disabled = false;
-                btnCreateAndGet.textContent = '创建项目并获取APIKEY';
-            }, 3000);
         });
 
-        btnExtract.addEventListener('click', async () => {
-            // 自动跳转至 aistudio 页面（无需提示）
+        btnCreateOnly.addEventListener('click', async () => {
             if (!location.host.includes("aistudio.google.com")) {
                 window.location.href = "https://aistudio.google.com/apikey";
                 return;
             }
-            btnExtract.disabled = true;
-            btnExtract.textContent = '运行中...';
+            btnCreateOnly.disabled = true; btnCreateOnly.textContent = '运行中...';
+            try {
+                await runNewApiKeyCreation();
+                btnCreateOnly.textContent = '创建KEY (完成)';
+            } catch (e) {
+                console.error('运行错误:', e);
+                btnCreateOnly.textContent = '运行错误，检查控制台';
+            }
+            setTimeout(() => {
+                btnCreateOnly.disabled = false;
+                btnCreateOnly.textContent = '2. 仅创建API KEY (新)';
+            }, 3000);
+        });
+
+        btnExtract.addEventListener('click', async () => {
+            if (!location.host.includes("aistudio.google.com")) {
+                window.location.href = "https://aistudio.google.com/apikey";
+                return;
+            }
+            btnExtract.disabled = true; btnExtract.textContent = '运行中...';
             try {
                 await runExtractKeys();
-                btnExtract.textContent = '提取APIKEY (完成)';
+                btnExtract.textContent = '提取KEY (完成)';
             } catch (e) {
                 console.error('运行错误:', e);
                 btnExtract.textContent = '运行错误，检查控制台';
             }
             setTimeout(() => {
                 btnExtract.disabled = false;
-                btnExtract.textContent = '提取APIKEY';
+                btnExtract.textContent = '3. 提取现有API KEY';
             }, 3000);
         });
     }
 
-    // MutationObserver 监控 DOM 变化
-    const observer = new MutationObserver((mutations, obs) => {
-        if (document.body) {
-            initFloatingButtons();
-        }
-    });
-    observer.observe(document, { childList: true, subtree: true });
-    // 定时检查（每 1000 毫秒执行一次）
-    setInterval(() => {
+    // --- 脚本初始化 ---
+    // 使用多种方式确保按钮能够被成功注入到页面
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initFloatingButtons);
+    } else {
+        initFloatingButtons();
+    }
+    const observer = new MutationObserver(() => {
         if (!document.getElementById('ai-floating-buttons')) {
             initFloatingButtons();
         }
-    }, 1000);
-    // 监听 window 的 DOMContentLoaded 与 load 事件
-    window.addEventListener('DOMContentLoaded', initFloatingButtons);
-    window.addEventListener('load', initFloatingButtons);
-    // 路由变化监听（针对 SPA）——重写 history 方法，发出自定义事件 locationchange
-    (function() {
-        const _wr = function(type) {
-            const orig = history[type];
-            return function() {
-                const rv = orig.apply(this, arguments);
-                const e = new Event(type);
-                window.dispatchEvent(e);
-                window.dispatchEvent(new Event('locationchange'));
-                return rv;
-            };
-        };
-        history.pushState = _wr('pushState');
-        history.replaceState = _wr('replaceState');
-        window.addEventListener('popstate', function() {
-            window.dispatchEvent(new Event('locationchange'));
-        });
-    })();
-    window.addEventListener('locationchange', () => {
-        initFloatingButtons();
     });
-    delay(3000).then(initFloatingButtons);
+    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
 
 })();
